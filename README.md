@@ -147,6 +147,15 @@ keeps the original MAC address and USB devices unless `--new-mac` is given, so d
 not run it next to the original without that flag. Restoring runs `qmrestore`
 over SSH, like the USB commands.
 
+### Host
+
+```bash
+proxmox host                  # Show host hardware specs and usage
+```
+
+Model, BIOS, max CPU speed and memory modules are read with `dmidecode` and
+`lscpu` over SSH; everything else comes from the API.
+
 ### USB Passthrough
 
 ```bash

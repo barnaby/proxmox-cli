@@ -2,6 +2,7 @@
 import pkg from "../package.json";
 import { registerBackupCommands } from "../src/commands/backups/command";
 import { registerConfigCommand } from "../src/commands/config/command";
+import { registerHostCommand } from "../src/commands/host/command";
 import { registerImageCommands } from "../src/commands/images/command";
 import { registerMachineCommands } from "../src/commands/machines/command";
 import { registerUSBCommands } from "../src/commands/usb/command";
@@ -28,6 +29,7 @@ program.addExamples(`
   $ proxmox backup my-vm
   $ proxmox backups ls
   $ proxmox restore my-vm my-vm-restored
+  $ proxmox host
   $ proxmox usb ls
   $ proxmox usb attach my-vm 2357:0604
   $ proxmox usb detach my-vm 2357:0604
@@ -37,6 +39,7 @@ registerMachineCommands(program);
 registerImageCommands(program);
 registerBackupCommands(program);
 registerUSBCommands(program);
+registerHostCommand(program);
 registerConfigCommand(program);
 
 program.parse(process.argv);

@@ -17,6 +17,38 @@ function formatStatus(status: string): string {
   }
 }
 
+function formatGB(mb: number): string {
+  return (mb / 1024).toFixed(1);
+}
+
+function usageColor(fraction: number): (text: string) => string {
+  if (fraction >= 0.9) {
+    return chalk.red;
+  }
+  if (fraction >= 0.7) {
+    return chalk.yellow;
+  }
+  return (text) => text;
+}
+
+export function formatCPUUsage(cpuUsage: number | null): string {
+  if (cpuUsage === null) {
+    return "--";
+  }
+  return usageColor(cpuUsage)(`${(cpuUsage * 100).toFixed(1)}%`);
+}
+
+// Running: "3.1 / 8.0 GB (39%)". Otherwise just the allocation: "8.0 GB".
+export function formatMemory(memUsed: number | null, mem: number): string {
+  if (memUsed === null || mem === 0) {
+    return `${formatGB(mem)} GB`;
+  }
+  const fraction = memUsed / mem;
+  return usageColor(fraction)(
+    `${formatGB(memUsed)} / ${formatGB(mem)} GB (${Math.round(fraction * 100)}%)`,
+  );
+}
+
 export function registerListCommand(program: CLICommand): void {
   program
     .command("ls")
@@ -43,8 +75,9 @@ export function registerListCommand(program: CLICommand): void {
           "Name",
           "Status",
           "IP",
+          "Cores",
           "CPU",
-          "Memory (MB)",
+          "Memory",
         ]);
 
         const rows = await Promise.all(
@@ -68,7 +101,8 @@ export function registerListCommand(program: CLICommand): void {
               formatStatus(vm.status),
               ipDisplay,
               cores?.toString() ?? "--",
-              vm.mem.toString(),
+              formatCPUUsage(vm.cpuUsage),
+              formatMemory(vm.memUsed, vm.mem),
             ];
           }),
         );
