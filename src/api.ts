@@ -273,6 +273,10 @@ export interface StorageContentItem {
   size: number;
   ctime?: number;
   content?: string;
+  // Set on backups
+  vmid?: number;
+  subtype?: string;
+  notes?: string;
 }
 
 export interface TaskStatusResponse {
