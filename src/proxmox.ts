@@ -16,6 +16,9 @@ export interface VM {
   name: string;
   status: string;
   mem: number;
+  // Live usage; null unless the VM is running.
+  memUsed: number | null;
+  cpuUsage: number | null;
   bootdisk: number;
   pid: number | null;
 }
@@ -32,14 +35,22 @@ export async function listVMs(): Promise<VM[]> {
 
   return result.data
     .filter((vm) => vm.template !== 1) // Exclude templates
-    .map((vm) => ({
-      id: vm.vmid,
-      name: vm.name ?? "",
-      status: vm.status,
-      mem: vm.maxmem ? Math.round(vm.maxmem / 1024 / 1024) : 0,
-      bootdisk: vm.maxdisk ? Math.round(vm.maxdisk / 1024 / 1024 / 1024) : 0,
-      pid: vm.pid ?? null,
-    }));
+    .map((vm) => {
+      const running = vm.status === "running";
+      return {
+        id: vm.vmid,
+        name: vm.name ?? "",
+        status: vm.status,
+        mem: vm.maxmem ? Math.round(vm.maxmem / 1024 / 1024) : 0,
+        memUsed:
+          running && vm.mem !== undefined
+            ? Math.round(vm.mem / 1024 / 1024)
+            : null,
+        cpuUsage: running && vm.cpu !== undefined ? vm.cpu : null,
+        bootdisk: vm.maxdisk ? Math.round(vm.maxdisk / 1024 / 1024 / 1024) : 0,
+        pid: vm.pid ?? null,
+      };
+    });
 }
 
 export async function getVMByName(name: string): Promise<VM | undefined> {

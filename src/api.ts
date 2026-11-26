@@ -221,6 +221,8 @@ export interface VMListResponse {
   vmid: number;
   name?: string;
   status: string;
+  // Fraction (0-1) of the VM's allocated vCPUs in use.
+  cpu?: number;
   mem?: number;
   maxmem?: number;
   maxdisk?: number;
