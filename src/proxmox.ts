@@ -194,6 +194,25 @@ export async function setVMCPUType(
   });
 }
 
+export interface VMResourceUpdate {
+  cores?: number;
+  cpuType?: string;
+  /** RAM in MB. */
+  memory?: number;
+}
+
+export async function updateVMResources(
+  vmId: number,
+  update: VMResourceUpdate,
+): Promise<void> {
+  const client = getClient();
+  await client.put(`/nodes/${env.PROXMOX_NODE}/qemu/${vmId}/config`, {
+    ...(update.cores !== undefined && { cores: update.cores }),
+    ...(update.cpuType !== undefined && { cpu: update.cpuType }),
+    ...(update.memory !== undefined && { memory: update.memory }),
+  });
+}
+
 export interface CreateVMOptions {
   name: string;
   iso: string;

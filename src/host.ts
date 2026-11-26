@@ -192,6 +192,15 @@ function virtualization(flags: string | undefined): string | null {
   return null;
 }
 
+// Logical CPUs (threads) on the host: the most vCPUs one VM can start with.
+export async function getHostCPUCount(): Promise<number> {
+  const client = getClient();
+  const status = await client.get<NodeStatusResponse>(
+    `/nodes/${env.PROXMOX_NODE}/status`,
+  );
+  return status.data.cpuinfo.cpus;
+}
+
 export async function getHostInfo(): Promise<HostInfo> {
   const client = getClient();
   const node = env.PROXMOX_NODE;

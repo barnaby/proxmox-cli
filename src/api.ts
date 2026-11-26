@@ -247,6 +247,7 @@ export interface VMConfigResponse {
   name?: string;
   memory?: number;
   cores?: number;
+  sockets?: number;
   cpu?: string;
   net0?: string;
   scsi0?: string;
