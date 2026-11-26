@@ -10,6 +10,7 @@ import {
   getTemplateByName,
   getVMByName,
   listISOs,
+  setVMCPUType,
   startVM,
 } from "../../proxmox";
 
@@ -45,6 +46,12 @@ export function registerCreateCommand(program: CLICommand): void {
     )
     .addOption(
       makeOption({
+        flags: "--cpu-type <type>",
+        description: `CPU type, e.g. host, x86-64-v2-AES (default: ${env.DEFAULT_VM_CPU_TYPE})`,
+      }),
+    )
+    .addOption(
+      makeOption({
         flags: "-m, --memory <mb>",
         description: `RAM in MB (default: ${env.DEFAULT_VM_RAM})`,
       }),
@@ -70,6 +77,7 @@ export function registerCreateCommand(program: CLICommand): void {
             template?: string;
             full?: boolean;
             cpu?: string;
+            cpuType?: string;
             memory?: string;
             disk?: string;
             start: boolean;
@@ -110,6 +118,12 @@ export function registerCreateCommand(program: CLICommand): void {
             )
               .start(options.full ? "Cloning (full)..." : "Cloning (linked)...")
               .run();
+
+            // A clone inherits the template's CPU type, so set ours explicitly.
+            const cpuType = options.cpuType ?? env.DEFAULT_VM_CPU_TYPE;
+            await spinnerWrap(() => setVMCPUType(vmId, cpuType))
+              .start(`Setting CPU type to ${cpuType}...`)
+              .run();
           } else {
             // Create from ISO - options.iso is guaranteed to be defined here
             const iso = options.iso as string;
@@ -125,6 +139,7 @@ export function registerCreateCommand(program: CLICommand): void {
                 name,
                 iso,
                 cpu: options.cpu ? Number.parseInt(options.cpu, 10) : undefined,
+                cpuType: options.cpuType,
                 ram: options.memory
                   ? Number.parseInt(options.memory, 10)
                   : undefined,

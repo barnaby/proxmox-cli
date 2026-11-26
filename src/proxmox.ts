@@ -157,10 +157,37 @@ export async function getVMCores(vmId: number): Promise<number | null> {
   return config.cores ?? null;
 }
 
+// What a VM runs with when its config has no `cpu` entry.
+export const PROXMOX_DEFAULT_CPU_TYPE = "kvm64";
+
+// The config value is `[cputype=]<type>[,flags=...][,hidden=1]...`.
+export function parseCPUType(cpu: string | undefined): string | null {
+  if (!cpu) {
+    return null;
+  }
+  const parts = cpu.split(",").map((part) => part.trim());
+  const explicit = parts.find((part) => part.startsWith("cputype="));
+  if (explicit) {
+    return explicit.slice("cputype=".length) || null;
+  }
+  return parts.find((part) => part && !part.includes("=")) ?? null;
+}
+
+export async function setVMCPUType(
+  vmId: number,
+  cpuType: string,
+): Promise<void> {
+  const client = getClient();
+  await client.put(`/nodes/${env.PROXMOX_NODE}/qemu/${vmId}/config`, {
+    cpu: cpuType,
+  });
+}
+
 export interface CreateVMOptions {
   name: string;
   iso: string;
   cpu?: number;
+  cpuType?: string;
   ram?: number;
   disk?: number;
   storage?: string;
@@ -182,6 +209,7 @@ export async function createVM(options: CreateVMOptions): Promise<number> {
     name: options.name,
     memory: ram,
     cores: cpu,
+    cpu: options.cpuType ?? env.DEFAULT_VM_CPU_TYPE,
     net0: "virtio,bridge=vmbr0",
     scsihw: "virtio-scsi-pci",
     scsi0: `${storage}:${disk}`,
