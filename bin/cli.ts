@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import pkg from "../package.json";
+import { registerBackupCommands } from "../src/commands/backups/command";
 import { registerConfigCommand } from "../src/commands/config/command";
 import { registerImageCommands } from "../src/commands/images/command";
 import { registerMachineCommands } from "../src/commands/machines/command";
@@ -24,6 +25,9 @@ program.addExamples(`
   $ proxmox images new my-vm my-nixos-template
   $ proxmox new clone-vm --template my-nixos-template
   $ proxmox rm my-vm
+  $ proxmox backup my-vm
+  $ proxmox backups ls
+  $ proxmox restore my-vm my-vm-restored
   $ proxmox usb ls
   $ proxmox usb attach my-vm 2357:0604
   $ proxmox usb detach my-vm 2357:0604
@@ -31,6 +35,7 @@ program.addExamples(`
 
 registerMachineCommands(program);
 registerImageCommands(program);
+registerBackupCommands(program);
 registerUSBCommands(program);
 registerConfigCommand(program);
 

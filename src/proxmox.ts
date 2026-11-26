@@ -247,11 +247,15 @@ export async function waitForVMStopped(vmId: number): Promise<void> {
   throw new Error("Timeout waiting for VM to stop");
 }
 
-export async function waitForTask(upid: string): Promise<void> {
+export async function waitForTask(
+  upid: string,
+  timeoutMs = 60_000,
+): Promise<void> {
   const client = getClient();
   // UPID format: UPID:node:pid:pstart:starttime:type:id:user@realm:
   // We need to poll /nodes/{node}/tasks/{upid}/status
-  for (let i = 0; i < 120; i++) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
     const result = await client.get<TaskStatusResponse>(
       `/nodes/${env.PROXMOX_NODE}/tasks/${encodeURIComponent(upid)}/status`,
     );
@@ -605,4 +609,133 @@ export async function hasCloudInitDrive(vmId: number): Promise<boolean> {
     }
   }
   return false;
+}
+
+// Backups
+
+// Backing up or restoring a large disk can take hours.
+const BACKUP_TASK_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+export interface Backup {
+  volid: string;
+  filename: string;
+  vmId: number;
+  // Name the VM had when it was backed up, read from the backup's notes.
+  vmName: string | null;
+  size: number;
+  createdAt: Date;
+}
+
+export async function listBackups(storage?: string): Promise<Backup[]> {
+  const client = getClient();
+  const target = storage ?? env.DEFAULT_BACKUP_STORAGE;
+  const result = await client.get<StorageContentItem[]>(
+    `/nodes/${env.PROXMOX_NODE}/storage/${target}/content?content=backup`,
+  );
+
+  return result.data
+    .filter((item) => item.subtype === "qemu" && item.vmid !== undefined)
+    .map((item) => ({
+      volid: item.volid,
+      filename: item.volid.split("/").pop() ?? item.volid,
+      vmId: Number(item.vmid),
+      vmName: item.notes?.trim().split("\n")[0] || null,
+      size: item.size,
+      createdAt: new Date((item.ctime ?? 0) * 1000),
+    }))
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+// `backups` must be sorted newest first, as listBackups returns them.
+// `ref` is a backup filename or volume ID, or else the name of a VM, which
+// picks that VM's most recent backup. `vmId` is the ID of the VM currently
+// called `ref`, if there is one.
+export function findBackup(
+  backups: Backup[],
+  ref: string,
+  vmId?: number,
+): Backup | undefined {
+  return (
+    backups.find((b) => b.filename === ref || b.volid === ref) ??
+    backups.find((b) => b.vmName === ref || b.vmId === vmId)
+  );
+}
+
+export interface CreateBackupOptions {
+  // Shut the VM down for the backup instead of backing it up live.
+  stop?: boolean;
+  storage?: string;
+}
+
+export async function createBackup(
+  vmId: number,
+  options?: CreateBackupOptions,
+): Promise<Backup> {
+  const client = getClient();
+  const storage = options?.storage ?? env.DEFAULT_BACKUP_STORAGE;
+
+  const result = await client.post<string>(
+    `/nodes/${env.PROXMOX_NODE}/vzdump`,
+    {
+      vmid: vmId,
+      storage,
+      mode: options?.stop ? "stop" : "snapshot",
+      compress: "zstd",
+      // Record the VM name so the backup can be found once the VM is gone.
+      "notes-template": "{{guestname}}",
+    },
+  );
+  await waitForTask(result.data, BACKUP_TASK_TIMEOUT_MS);
+
+  const backup = (await listBackups(storage)).find((b) => b.vmId === vmId);
+  if (!backup) {
+    throw new Error(`Backup finished but was not found on "${storage}"`);
+  }
+  return backup;
+}
+
+export interface RestoreBackupOptions {
+  // Give the restored VM new MAC addresses instead of the backed-up ones.
+  newMac?: boolean;
+  // Storage for the restored disks. Defaults to where they were backed up from.
+  storage?: string;
+}
+
+const shellQuote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
+// Always restores into a new VM ID, so an existing VM is never overwritten.
+export async function restoreBackup(
+  backup: Backup,
+  name: string,
+  options?: RestoreBackupOptions,
+): Promise<number> {
+  const host = requireProxmoxHost();
+  const vmId = await getNextVMId();
+
+  const args = [shellQuote(backup.volid), String(vmId)];
+  if (options?.newMac) {
+    args.push("--unique", "1");
+  }
+  if (options?.storage) {
+    args.push("--storage", shellQuote(options.storage));
+  }
+
+  // Restoring needs root shell access - API tokens are refused when the
+  // backup contains USB passthrough devices
+  const result = await sshExec(
+    host,
+    env.PROXMOX_USER,
+    `qmrestore ${args.join(" ")}`,
+    { nothrow: true },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Failed to restore backup: ${result.stderr.trim() || result.stdout.trim()}`,
+    );
+  }
+
+  if (name !== backup.vmName) {
+    await renameVM(vmId, name);
+  }
+  return vmId;
 }

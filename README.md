@@ -129,6 +129,24 @@ proxmox images new <vm> <name>  # Create template from VM
 proxmox images rm <name>      # Delete ISO or template
 ```
 
+### Backups
+
+```bash
+proxmox backup <vm>           # Back up a VM while it keeps running
+proxmox backup <vm> --stop    # Shut the VM down for the backup, then restart it
+proxmox backups ls [vm]       # List backups
+proxmox restore <vm> [name]   # Restore a VM's latest backup as a new VM
+proxmox restore <backup-file> [name]  # Restore a specific backup
+proxmox restore <vm> <name> --new-mac # Restore alongside the original VM
+```
+
+Backups are full `vzdump` archives written to `DEFAULT_BACKUP_STORAGE`. A restore
+always creates a new VM and leaves it stopped; it never overwrites an existing one.
+`[name]` defaults to the name the VM had when it was backed up. The restored VM
+keeps the original MAC address and USB devices unless `--new-mac` is given, so do
+not run it next to the original without that flag. Restoring runs `qmrestore`
+over SSH, like the USB commands.
+
 ### USB Passthrough
 
 ```bash
@@ -151,10 +169,11 @@ proxmox config set KEY=value  # Set config value
 | `PROXMOX_HOST` | Proxmox server IP/hostname | (required) |
 | `PROXMOX_API_TOKEN` | API token (`user@realm!tokenid=secret`) | (required) |
 | `PROXMOX_NODE` | Proxmox node name | `pve` |
-| `PROXMOX_USER` | SSH user for USB commands | `root` |
+| `PROXMOX_USER` | SSH user for USB and restore commands | `root` |
 | `SSH_KEY_PATH` | SSH private key path | `~/.ssh/id_rsa` |
 | `DEFAULT_VM_STORAGE` | Storage for VM disks | `local-lvm` |
 | `DEFAULT_ISO_STORAGE` | Storage for ISOs | `local` |
+| `DEFAULT_BACKUP_STORAGE` | Storage for backups | `local` |
 | `DEFAULT_VM_CPU` | Default CPU cores | `4` |
 | `DEFAULT_VM_CPU_TYPE` | Default CPU type for new VMs | `host` |
 | `DEFAULT_VM_RAM` | Default RAM in MB | `4096` |
