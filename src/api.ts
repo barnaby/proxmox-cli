@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import type { ClientRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { basename } from "node:path";
 import { requireApiToken, requireProxmoxHost } from "./config";
 
@@ -8,6 +14,77 @@ export interface ProxmoxApiResponse<T> {
 export interface ProxmoxApiError {
   errors?: Record<string, string>;
   message?: string;
+}
+
+interface RawResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text: string;
+}
+
+// Proxmox ships with a self-signed certificate, so verification is disabled.
+// This goes through node:https rather than fetch because fetch has no portable
+// way to do that: Bun's `tls` option is ignored by Node, which runs the build.
+function send(
+  method: string,
+  url: string,
+  headers: Record<string, string | number>,
+  writeBody?: (req: ClientRequest) => void | Promise<void>,
+): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(
+      url,
+      { method, headers, rejectUnauthorized: false },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("error", reject);
+        res.on("end", () => {
+          const status = res.statusCode ?? 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            statusText: res.statusMessage ?? "",
+            text: Buffer.concat(chunks).toString("utf-8"),
+          });
+        });
+      },
+    );
+    req.on("error", (error: NodeJS.ErrnoException) => {
+      const { host } = new URL(url);
+      reject(
+        new Error(
+          `Could not reach Proxmox at ${host}: ${error.code ?? error.message}`,
+        ),
+      );
+    });
+    Promise.resolve(writeBody?.(req)).then(() => req.end(), reject);
+  });
+}
+
+function assertOk(response: RawResponse, label: string): void {
+  if (response.ok) {
+    return;
+  }
+  let errorMessage = `${label} failed: ${response.status} ${response.statusText}`;
+  const prefix = label === "API request" ? "API" : label;
+  try {
+    const errorData = JSON.parse(response.text) as ProxmoxApiError;
+    if (errorData.errors) {
+      const errorDetails = Object.entries(errorData.errors)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      errorMessage = `${prefix} error: ${errorDetails}`;
+    } else if (errorData.message) {
+      errorMessage = `${prefix} error: ${errorData.message}`;
+    }
+  } catch {
+    if (response.text) {
+      errorMessage = `${prefix} error: ${response.text}`;
+    }
+  }
+  throw new Error(errorMessage);
 }
 
 class ProxmoxClient {
@@ -22,63 +99,41 @@ class ProxmoxClient {
   private async request<T>(
     method: string,
     path: string,
-    body?: Record<string, unknown> | FormData,
+    body?: Record<string, unknown>,
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-
-    const headers: Record<string, string> = {
+    const headers: Record<string, string | number> = {
       Authorization: `PVEAPIToken=${this.token}`,
     };
 
-    let fetchBody: string | FormData | undefined;
-
-    if (body instanceof FormData) {
-      fetchBody = body;
-      // Don't set Content-Type for FormData - fetch will set it with boundary
-    } else if (body) {
-      headers["Content-Type"] = "application/x-www-form-urlencoded";
+    let payload: Buffer | undefined;
+    if (body) {
       const params = new URLSearchParams();
       for (const [k, v] of Object.entries(body)) {
         params.append(k, String(v));
       }
-      fetchBody = params.toString();
+      payload = Buffer.from(params.toString(), "utf-8");
+      headers["Content-Type"] = "application/x-www-form-urlencoded";
+      headers["Content-Length"] = payload.length;
     }
 
-    const response = await fetch(url, {
+    const response = await send(
       method,
+      `${this.baseUrl}${path}`,
       headers,
-      body: fetchBody,
-      // Bun supports this option for self-signed certs
-      tls: { rejectUnauthorized: false },
-    } as RequestInit);
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-      try {
-        const errorData = JSON.parse(text) as ProxmoxApiError;
-        if (errorData.errors) {
-          const errorDetails = Object.entries(errorData.errors)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
-          errorMessage = `API error: ${errorDetails}`;
-        } else if (errorData.message) {
-          errorMessage = `API error: ${errorData.message}`;
+      (req) => {
+        if (payload) {
+          req.write(payload);
         }
-      } catch {
-        if (text) {
-          errorMessage = `API error: ${text}`;
-        }
-      }
-      throw new Error(errorMessage);
-    }
+      },
+    );
 
-    if (!text) {
+    assertOk(response, "API request");
+
+    if (!response.text) {
       return {} as T;
     }
 
-    return JSON.parse(text) as T;
+    return JSON.parse(response.text) as T;
   }
 
   get<T>(path: string): Promise<ProxmoxApiResponse<T>> {
@@ -108,50 +163,44 @@ class ProxmoxClient {
     filePath: string,
     contentType: string,
   ): Promise<ProxmoxApiResponse<string>> {
-    const url = `${this.baseUrl}${path}`;
-    const filename = basename(filePath);
+    // Multipart body written by hand so the file is streamed from disk
+    // instead of being buffered in memory (ISOs run to several GB).
+    const boundary = `----proxmox-cli-${randomUUID()}`;
+    const filename = basename(filePath).replace(/"/g, "%22");
+    const head = Buffer.from(
+      `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="content"\r\n\r\n` +
+        `${contentType}\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="filename"; filename="${filename}"\r\n` +
+        `Content-Type: application/octet-stream\r\n\r\n`,
+      "utf-8",
+    );
+    const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf-8");
+    const { size } = await stat(filePath);
 
-    // Read file as buffer for Bun's fetch
-    const fileBuffer = await Bun.file(filePath).arrayBuffer();
-    const blob = new Blob([fileBuffer], { type: "application/octet-stream" });
-
-    const formData = new FormData();
-    formData.append("content", contentType);
-    formData.append("filename", blob, filename);
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
+    const response = await send(
+      "POST",
+      `${this.baseUrl}${path}`,
+      {
         Authorization: `PVEAPIToken=${this.token}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        "Content-Length": head.length + size + tail.length,
       },
-      body: formData,
-      // Bun supports this option for self-signed certs
-      tls: { rejectUnauthorized: false },
-    } as RequestInit);
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      let errorMessage = `Upload failed: ${response.status} ${response.statusText}`;
-      try {
-        const errorData = JSON.parse(text) as ProxmoxApiError;
-        if (errorData.errors) {
-          const errorDetails = Object.entries(errorData.errors)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
-          errorMessage = `Upload error: ${errorDetails}`;
-        } else if (errorData.message) {
-          errorMessage = `Upload error: ${errorData.message}`;
+      async (req) => {
+        req.write(head);
+        for await (const chunk of createReadStream(filePath)) {
+          if (!req.write(chunk)) {
+            await once(req, "drain");
+          }
         }
-      } catch {
-        if (text) {
-          errorMessage = `Upload error: ${text}`;
-        }
-      }
-      throw new Error(errorMessage);
-    }
+        req.write(tail);
+      },
+    );
 
-    return JSON.parse(text) as ProxmoxApiResponse<string>;
+    assertOk(response, "Upload");
+
+    return JSON.parse(response.text) as ProxmoxApiResponse<string>;
   }
 }
 
