@@ -8,11 +8,13 @@ import { registerProvisionCommand } from "./provision";
 import { registerSshCommand } from "./ssh";
 import { registerStartCommand } from "./start";
 import { registerStopCommand } from "./stop";
+import { registerUpdateCommand } from "./update";
 
 export function registerMachineCommands(program: CLICommand): void {
   registerListCommand(program);
   registerGetCommand(program);
   registerCreateCommand(program);
+  registerUpdateCommand(program);
   registerStartCommand(program);
   registerStopCommand(program);
   registerDestroyCommand(program);

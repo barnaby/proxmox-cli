@@ -111,6 +111,8 @@ proxmox get <vm>              # Show VM details
 proxmox new <name> --iso <iso>           # Create from ISO
 proxmox new <name> --template <template> # Clone from template
 proxmox new <name> --template <template> --full  # Full clone
+proxmox new <name> --iso <iso> --cpu-type x86-64-v2-AES  # Override the CPU type
+proxmox update <vm> --cpu-type host      # Change a VM's CPU type
 proxmox start <vm>            # Start a VM
 proxmox stop <vm>             # Stop a VM
 proxmox rm <vm>               # Destroy a VM
@@ -154,6 +156,7 @@ proxmox config set KEY=value  # Set config value
 | `DEFAULT_VM_STORAGE` | Storage for VM disks | `local-lvm` |
 | `DEFAULT_ISO_STORAGE` | Storage for ISOs | `local` |
 | `DEFAULT_VM_CPU` | Default CPU cores | `4` |
+| `DEFAULT_VM_CPU_TYPE` | Default CPU type for new VMs | `host` |
 | `DEFAULT_VM_RAM` | Default RAM in MB | `4096` |
 | `DEFAULT_VM_DISK` | Default disk in GB | `128` |
 | `DEFAULT_SSH_USER` | Default SSH user for VMs | `root` |

@@ -11,6 +11,8 @@ import {
   getVMMAC,
   getVMUSBDevices,
   listUSBDevices,
+  PROXMOX_DEFAULT_CPU_TYPE,
+  parseCPUType,
 } from "../../proxmox";
 
 function formatStatus(status: string): string {
@@ -57,6 +59,12 @@ export function registerGetCommand(program: CLICommand): void {
           { key: "MAC", value: mac },
           null,
           { key: "CPU Cores", value: config.cores ?? "--" },
+          {
+            key: "CPU Type",
+            value:
+              parseCPUType(config.cpu) ??
+              `${PROXMOX_DEFAULT_CPU_TYPE} (Proxmox default)`,
+          },
           { key: "Memory (MB)", value: config.memory ?? vm.mem },
           { key: "Disk (GB)", value: vm.bootdisk },
           null,

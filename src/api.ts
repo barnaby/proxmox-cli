@@ -196,6 +196,7 @@ export interface VMConfigResponse {
   name?: string;
   memory?: number;
   cores?: number;
+  cpu?: string;
   net0?: string;
   scsi0?: string;
   ide2?: string;
