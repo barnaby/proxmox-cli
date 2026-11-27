@@ -114,6 +114,8 @@ proxmox new <name> --template <template> --full  # Full clone
 proxmox new <name> --iso <iso> --cpu-type x86-64-v2-AES  # Override the CPU type
 proxmox update <vm> --cpu-type host      # Change a VM's CPU type
 proxmox update <vm> --cpu 8 --memory 8192  # Change a VM's cores and RAM (MB)
+proxmox new <name> --iso <iso> --autostart  # Start the VM whenever the host boots
+proxmox update <vm> --no-autostart       # Turn autostart off (--autostart turns it on)
 proxmox start <vm>            # Start a VM
 proxmox stop <vm>             # Stop a VM
 proxmox rm <vm>               # Destroy a VM
