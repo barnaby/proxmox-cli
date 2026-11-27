@@ -199,6 +199,8 @@ export interface VMResourceUpdate {
   cpuType?: string;
   /** RAM in MB. */
   memory?: number;
+  /** Whether the VM starts when the host boots. */
+  autostart?: boolean;
 }
 
 export async function updateVMResources(
@@ -210,6 +212,9 @@ export async function updateVMResources(
     ...(update.cores !== undefined && { cores: update.cores }),
     ...(update.cpuType !== undefined && { cpu: update.cpuType }),
     ...(update.memory !== undefined && { memory: update.memory }),
+    ...(update.autostart !== undefined && {
+      onboot: update.autostart ? 1 : 0,
+    }),
   });
 }
 
@@ -220,6 +225,8 @@ export interface CreateVMOptions {
   cpuType?: string;
   ram?: number;
   disk?: number;
+  /** Whether the VM starts when the host boots. */
+  autostart?: boolean;
   storage?: string;
   isoStorage?: string;
 }
@@ -251,6 +258,9 @@ export async function createVM(options: CreateVMOptions): Promise<number> {
     vga: "std",
     bios: "ovmf",
     efidisk0: `${storage}:1,efitype=4m,pre-enrolled-keys=0`,
+    ...(options.autostart !== undefined && {
+      onboot: options.autostart ? 1 : 0,
+    }),
   });
 
   return vmId;

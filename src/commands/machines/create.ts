@@ -12,6 +12,7 @@ import {
   listISOs,
   setVMCPUType,
   startVM,
+  updateVMResources,
 } from "../../proxmox";
 
 export function registerCreateCommand(program: CLICommand): void {
@@ -64,6 +65,18 @@ export function registerCreateCommand(program: CLICommand): void {
     )
     .addOption(
       makeOption({
+        flags: "--autostart",
+        description: "Start the VM automatically when the Proxmox host boots",
+      }),
+    )
+    .addOption(
+      makeOption({
+        flags: "--no-autostart",
+        description: "Don't start the VM when the Proxmox host boots",
+      }),
+    )
+    .addOption(
+      makeOption({
         flags: "--no-start",
         description: "Don't start the VM after creation",
       }),
@@ -80,6 +93,7 @@ export function registerCreateCommand(program: CLICommand): void {
             cpuType?: string;
             memory?: string;
             disk?: string;
+            autostart?: boolean;
             start: boolean;
           },
         ) => {
@@ -124,6 +138,14 @@ export function registerCreateCommand(program: CLICommand): void {
             await spinnerWrap(() => setVMCPUType(vmId, cpuType))
               .start(`Setting CPU type to ${cpuType}...`)
               .run();
+
+            // Left unset, a clone keeps the template's autostart setting.
+            const autostart = options.autostart;
+            if (autostart !== undefined) {
+              await spinnerWrap(() => updateVMResources(vmId, { autostart }))
+                .start(`Turning autostart ${autostart ? "on" : "off"}...`)
+                .run();
+            }
           } else {
             // Create from ISO - options.iso is guaranteed to be defined here
             const iso = options.iso as string;
@@ -146,6 +168,7 @@ export function registerCreateCommand(program: CLICommand): void {
                 disk: options.disk
                   ? Number.parseInt(options.disk, 10)
                   : undefined,
+                autostart: options.autostart,
               }),
             )
               .start("Creating VM...")

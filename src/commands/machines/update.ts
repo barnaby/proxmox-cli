@@ -41,11 +41,28 @@ export function registerUpdateCommand(program: CLICommand): void {
         description: "RAM in MB",
       }),
     )
+    .addOption(
+      makeOption({
+        flags: "--autostart",
+        description: "Start the VM automatically when the Proxmox host boots",
+      }),
+    )
+    .addOption(
+      makeOption({
+        flags: "--no-autostart",
+        description: "Don't start the VM when the Proxmox host boots",
+      }),
+    )
     .action(
       actionWithErrorHandler(
         async (
           name: string,
-          options: { cpu?: string; cpuType?: string; memory?: string },
+          options: {
+            cpu?: string;
+            cpuType?: string;
+            memory?: string;
+            autostart?: boolean;
+          },
         ) => {
           const cores =
             options.cpu !== undefined
@@ -56,16 +73,18 @@ export function registerUpdateCommand(program: CLICommand): void {
               ? parsePositiveInt(options.memory, "--memory")
               : undefined;
           const cpuType = options.cpuType;
+          const autostart = options.autostart;
 
           const changes = [
             cores !== undefined && `${cores} cores`,
             cpuType !== undefined && `CPU type ${cpuType}`,
             memory !== undefined && `${memory} MB memory`,
+            autostart !== undefined && `autostart ${autostart ? "on" : "off"}`,
           ].filter((change): change is string => Boolean(change));
 
           if (changes.length === 0) {
             throw new Error(
-              "Nothing to update. Pass --cpu <cores>, --cpu-type <type> or --memory <mb>.",
+              "Nothing to update. Pass --cpu <cores>, --cpu-type <type>, --memory <mb> or --[no-]autostart.",
             );
           }
 
@@ -88,14 +107,19 @@ export function registerUpdateCommand(program: CLICommand): void {
           }
 
           await spinnerWrap(() =>
-            updateVMResources(vm.id, { cores, cpuType, memory }),
+            updateVMResources(vm.id, { cores, cpuType, memory, autostart }),
           )
             .start(`Updating ${changes.join(", ")}...`)
             .run();
 
           notifySuccess(`VM "${name}" set to ${changes.join(", ")}`);
 
-          if (vm.status.toLowerCase() === "running") {
+          // Autostart only matters at the next host boot; the rest need a restart.
+          const needsRestart =
+            cores !== undefined ||
+            cpuType !== undefined ||
+            memory !== undefined;
+          if (needsRestart && vm.status.toLowerCase() === "running") {
             console.log(
               "  The VM is running: stop and start it for the change to take effect.",
             );

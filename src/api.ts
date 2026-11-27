@@ -249,6 +249,8 @@ export interface VMConfigResponse {
   cores?: number;
   sockets?: number;
   cpu?: string;
+  /** 1 when the VM starts with the host. */
+  onboot?: number;
   net0?: string;
   scsi0?: string;
   ide2?: string;

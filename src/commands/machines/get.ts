@@ -68,6 +68,7 @@ export function registerGetCommand(program: CLICommand): void {
           { key: "Memory (MB)", value: config.memory ?? vm.mem },
           { key: "Disk (GB)", value: vm.bootdisk },
           null,
+          { key: "Autostart", value: config.onboot ? "on" : "off" },
           { key: "Boot Disk", value: config.scsi0?.split(",")[0] ?? "--" },
           { key: "CD/DVD", value: config.ide2?.split(",")[0] ?? "--" },
         ];
